@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Chat · OpenAI + Docker Demo</title>
+  <style>
+    :root {
+      --bg1: #6366f1;
+      --bg2: #8b5cf6;
+      --bg3: #ec4899;
+      --card: #ffffff;
+      --ink: #1e1b2e;
+      --muted: #6b7280;
+      --line: #ececf1;
+      --accent: #6366f1;
+      --accent-ink: #ffffff;
+      --ans-bg: #f6f5ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: var(--card);
+      border-radius: 20px;
+      box-shadow: 0 30px 60px -15px rgba(31, 20, 60, 0.45);
+      overflow: hidden;
+    }
+
+    header {
+      padding: 28px 32px 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 0 4px rgba(34,197,94,0.18);
+    }
+    header p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .body { padding: 26px 32px 30px; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      padding: 14px 16px;
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    }
+
+    button {
+      margin-top: 14px;
+      width: 100%;
+      padding: 14px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent-ink);
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform .05s, opacity .15s, background .15s;
+    }
+    button:hover { background: #4f46e5; }
+    button:active { transform: translateY(1px); }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+
+    .answer-wrap { margin-top: 26px; }
+
+    .answer {
+      min-height: 70px;
+      padding: 18px 20px;
+      background: var(--ans-bg);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      font-size: 15px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      color: var(--ink);
+    }
+    .answer.placeholder { color: var(--muted); }
+    .answer.error { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+    /* typing dots */
+    .dots span {
+      display: inline-block;
+      width: 7px; height: 7px; margin-right: 4px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: blink 1.2s infinite both;
+    }
+    .dots span:nth-child(2) { animation-delay: .2s; }
+    .dots span:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+
+    footer {
+      padding: 16px 32px 22px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      border-top: 1px solid var(--line);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <header>
+      <h1><span class="dot"></span> AI Chat</h1>
+      <p>Ask anything. Powered by OpenAI, running inside Docker.</p>
+    </header>
+
+    <div class="body">
+      <label for="q">Your question</label>
+      <textarea id="q" placeholder="e.g. Explain Docker in simple terms"></textarea>
+      <button id="askBtn">Ask</button>
+
+      <div class="answer-wrap">
+        <label>Answer</label>
+        <div id="answer" class="answer placeholder">The answer will appear here.</div>
+      </div>
+    </div>
+
+    <footer>OpenAI + Docker Demo</footer>
+  </div>
+
+  <script>
+    const btn = document.getElementById("askBtn");
+    const qEl = document.getElementById("q");
+    const ansEl = document.getElementById("answer");
+
+    async function ask() {
+      const question = qEl.value.trim();
+      if (!question) {
+        setAnswer("Please type a question first.", "error");
+        return;
+      }
+
+      btn.disabled = true;
+      ansEl.className = "answer";
+      ansEl.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+
+      try {
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setAnswer(data.detail || "Something went wrong.", "error");
+        } else {
+          setAnswer(data.answer, "");
+        }
+      } catch (err) {
+        setAnswer("Could not reach the server. Is the container running?", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function setAnswer(text, kind) {
+      ansEl.className = "answer" + (kind ? " " + kind : "");
+      ansEl.textContent = text;
+    }
+
+    btn.addEventListener("click", ask);
+    // Ctrl/Cmd + Enter to submit
+    qEl.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") ask();
+    });
+  </script>
+</body>
+</html>
