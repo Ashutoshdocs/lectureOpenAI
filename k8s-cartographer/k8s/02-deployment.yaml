@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cartographer
+  namespace: cartographer
+  labels:
+    app: cartographer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cartographer
+  template:
+    metadata:
+      labels:
+        app: cartographer
+    spec:
+      serviceAccountName: cartographer        # <- grants the read-only RBAC
+      containers:
+        - name: cartographer
+          image: k8s-cartographer:1.0          # change to your registry image if pushing
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # OPTIONAL: uncomment to enable the "Explain (AI)" button.
+            # Create the secret first:
+            #   kubectl -n cartographer create secret generic cartographer-openai \
+            #     --from-literal=OPENAI_API_KEY="sk-..."
+            # - name: OPENAI_API_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: cartographer-openai
+            #       key: OPENAI_API_KEY
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8000 }
+            initialDelaySeconds: 3
+            periodSeconds: 10

@@ -1,0 +1,36 @@
+# Read-only access so the app can scan the cluster safely.
+# It can LIST/GET topology objects across all namespaces — nothing writable,
+# and no access to Secret *values*.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cartographer
+  namespace: cartographer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cartographer-readonly
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes", "pods", "services", "endpoints", "componentstatuses"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cartographer-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cartographer-readonly
+subjects:
+  - kind: ServiceAccount
+    name: cartographer
+    namespace: cartographer

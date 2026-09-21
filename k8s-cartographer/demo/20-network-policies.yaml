@@ -1,0 +1,47 @@
+# Network policies — these make the namespaces show a dashed "🔒 protected"
+# border in the diagram. They enforce: db only accepts traffic from backend,
+# backend only from frontend.
+#
+# NOTE: NetworkPolicies are only ENFORCED if your CNI supports them
+# (Calico, Cilium, Weave, Antrea...). Flannel alone does not enforce them,
+# but the objects still exist and the Cartographer will still draw them.
+---
+# database: deny all ingress by default...
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-default-deny
+  namespace: shop-database
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+# ...then allow ingress only from backend pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-allow-backend
+  namespace: shop-database
+spec:
+  podSelector: { matchLabels: { app: db } }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { tier: backend } }
+      ports:
+        - { protocol: TCP, port: 80 }
+---
+# backend: allow ingress only from frontend pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow-frontend
+  namespace: shop-backend
+spec:
+  podSelector: { matchLabels: { app: api } }
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { tier: frontend } }
+      ports:
+        - { protocol: TCP, port: 80 }

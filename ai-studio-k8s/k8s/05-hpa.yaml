@@ -1,0 +1,22 @@
+# Horizontal Pod Autoscaler: scales pods between 2 and 8 based on CPU.
+# Requires metrics-server in the cluster:
+#   kubectl top pods -n ai-studio    # should return numbers, not an error
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ai-studio
+  namespace: ai-studio
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ai-studio
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

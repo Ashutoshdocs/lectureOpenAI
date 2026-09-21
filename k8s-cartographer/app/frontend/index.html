@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>K8s Cartographer · Handwritten cluster map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#22243a; --muted:#6b7280; --line:#e6e6f0; --paper:#fbfaf5;
+    --accent:#6d5cff; --ok:#16a34a; --warn:#d97706; --bad:#dc2626;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh; color:var(--ink);
+    font-family:"Gaegu","Comic Sans MS",system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, #eef2ff, transparent),
+      radial-gradient(1000px 500px at 110% 10%, #fdeef7, transparent),
+      #f4f5fb;
+    padding:22px;
+  }
+  .wrap{max-width:1200px; margin:0 auto;}
+  header{display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:14px;}
+  h1{font-size:30px; margin:0; letter-spacing:.5px; display:flex; align-items:center; gap:10px;}
+  h1 .pin{font-size:26px;}
+  .sub{color:var(--muted); font-size:16px; margin-top:2px;}
+  .toolbar{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+  button{
+    font-family:inherit; font-size:17px; font-weight:700; cursor:pointer;
+    border:2px solid var(--ink); background:#fff; color:var(--ink);
+    padding:9px 16px; border-radius:14px; box-shadow:2px 2px 0 var(--ink);
+    transition:transform .05s, box-shadow .05s;
+  }
+  button:hover{transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--ink);}
+  button:active{transform:translate(1px,1px); box-shadow:1px 1px 0 var(--ink);}
+  button.primary{background:var(--accent); color:#fff; border-color:#3f2eb0;}
+  button:disabled{opacity:.5; cursor:not-allowed; box-shadow:none;}
+  label.chk{font-size:16px; display:inline-flex; align-items:center; gap:6px; color:var(--muted); cursor:pointer;}
+
+  .stats{display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 16px;}
+  .stat{
+    background:#fff; border:2px solid var(--ink); border-radius:14px; padding:8px 14px;
+    box-shadow:2px 2px 0 rgba(34,36,58,.25); font-size:16px;
+  }
+  .stat b{font-size:20px;}
+  .health{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+  .pill{border:2px solid var(--ink); border-radius:999px; padding:4px 10px; font-size:14px; background:#fff;}
+  .pill.ok{background:#dcfce7;} .pill.bad{background:#fee2e2;} .pill.unk{background:#f1f5f9;}
+
+  .canvas-card{
+    background:var(--paper); border:2px solid var(--ink); border-radius:18px;
+    box-shadow:5px 5px 0 rgba(34,36,58,.18); padding:8px; overflow:auto;
+    background-image:linear-gradient(#eceadf 1px, transparent 1px), linear-gradient(90deg,#eceadf 1px, transparent 1px);
+    background-size:26px 26px;
+  }
+  svg{display:block; width:100%; height:auto;}
+  .msg{padding:40px; text-align:center; color:var(--muted); font-size:18px;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; margin-top:12px; font-size:15px; color:var(--muted);}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .sw{width:16px; height:16px; border:2px solid var(--ink); border-radius:4px; display:inline-block;}
+  .footer{margin-top:14px; color:var(--muted); font-size:14px;}
+  .explain{
+    margin-top:14px; background:#fff; border:2px dashed var(--accent); border-radius:16px; padding:16px 18px;
+    font-size:17px; line-height:1.55; white-space:pre-wrap; display:none;
+  }
+  .served{font-size:14px; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="pin">📍</span> K8s Cartographer</h1>
+      <div class="sub">A handwritten map of your cluster — namespaces, pods, services & network policies.</div>
+    </div>
+    <div class="toolbar">
+      <label class="chk"><input type="checkbox" id="showSystem" /> show system namespaces</label>
+      <button id="explainBtn">🧠 Explain (AI)</button>
+      <button id="pngBtn">⬇ PNG</button>
+      <button id="scanBtn" class="primary">↻ Scan cluster</button>
+    </div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+  <div class="health" id="health" style="margin-bottom:14px;"></div>
+
+  <div class="canvas-card">
+    <div id="msg" class="msg">Click <b>Scan cluster</b> to draw your architecture.</div>
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg" style="display:none;"></svg>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <div class="explain" id="explain"></div>
+  <div class="footer"><span class="served" id="served"></span> · Reads live cluster state (stored in etcd) via the Kubernetes API.</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/roughjs/4.6.6/rough.min.js"></script>
+<script>
+const SVGNS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("svg");
+const msg = document.getElementById("msg");
+let rc = null; // rough.js instance (may stay null if CDN blocked)
+
+// Pastel palette for namespaces (fill, stroke).
+const PALETTE = [
+  ["#fde68a","#b45309"], ["#bbf7d0","#15803d"], ["#bfdbfe","#1d4ed8"],
+  ["#fbcfe8","#be185d"], ["#ddd6fe","#6d28d9"], ["#a7f3d0","#0f766e"],
+  ["#fecaca","#b91c1c"], ["#c7d2fe","#3730a3"], ["#fed7aa","#c2410c"],
+];
+const SVC_FILL = "#e0f2fe", SVC_STROKE = "#0369a1";
+
+let lastData = null;
+
+// ---------- sketch helpers (rough.js if present, else plain SVG) ----------
+function ensureRC(){ if(!rc && window.rough){ try{ rc = rough.svg(svg); }catch(e){ rc=null; } } }
+function rect(x,y,w,h,{fill="#fff",stroke="#222",strokeWidth=2,dash=null}={}){
+  ensureRC();
+  if(rc){
+    const opts={fill,stroke,strokeWidth,roughness:1.6,bowing:1.5,fillStyle:"solid"};
+    if(dash) opts.strokeLineDash=dash;
+    const g=rc.rectangle(x,y,w,h,opts); svg.appendChild(g); return;
+  }
+  const r=document.createElementNS(SVGNS,"rect");
+  r.setAttribute("x",x); r.setAttribute("y",y); r.setAttribute("width",w); r.setAttribute("height",h);
+  r.setAttribute("rx",8); r.setAttribute("fill",fill); r.setAttribute("stroke",stroke); r.setAttribute("stroke-width",strokeWidth);
+  if(dash) r.setAttribute("stroke-dasharray",dash.join(" "));
+  svg.appendChild(r);
+}
+function line(x1,y1,x2,y2,{stroke="#555",strokeWidth=2}={}){
+  ensureRC();
+  if(rc){ const g=rc.line(x1,y1,x2,y2,{stroke,strokeWidth,roughness:1.8,bowing:2}); svg.appendChild(g); return; }
+  const l=document.createElementNS(SVGNS,"line");
+  l.setAttribute("x1",x1); l.setAttribute("y1",y1); l.setAttribute("x2",x2); l.setAttribute("y2",y2);
+  l.setAttribute("stroke",stroke); l.setAttribute("stroke-width",strokeWidth);
+  svg.appendChild(l);
+}
+function text(x,y,s,{size=16,weight=400,fill="#22243a",anchor="start"}={}){
+  const t=document.createElementNS(SVGNS,"text");
+  t.setAttribute("x",x); t.setAttribute("y",y); t.setAttribute("font-family","'Gaegu','Comic Sans MS',sans-serif");
+  t.setAttribute("font-size",size); t.setAttribute("font-weight",weight); t.setAttribute("fill",fill);
+  t.setAttribute("text-anchor",anchor); t.textContent=s; svg.appendChild(t); return t;
+}
+function trunc(s,n){ s=String(s||""); return s.length>n ? s.slice(0,n-1)+"…" : s; }
+function selectorMatches(sel, labels){
+  const keys=Object.keys(sel||{}); if(!keys.length) return false;
+  return keys.every(k => (labels||{})[k] === sel[k]);
+}
+
+// ---------- layout + draw ----------
+function draw(data){
+  lastData = data;
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const showSystem = document.getElementById("showSystem").checked;
+  let namespaces = data.namespaces.filter(n => showSystem || !n.system);
+  // Put busy namespaces first.
+  namespaces.sort((a,b)=> (b.counts.pods+b.counts.services) - (a.counts.pods+a.counts.services));
+
+  const CW = 1160, PAD = 16, GAP = 26;
+  let x = PAD, y = 0, rowH = 0;
+  const svcW = 158, svcH = 30, svcGap = 10;
+  const podW = 118, podH = 34, podGap = 12, podCols = 2;
+
+  // ---- Nodes strip ----
+  y = 14;
+  text(PAD, y+6, "🖥️ Nodes", {size:20, weight:700});
+  let nx = PAD + 120;
+  (data.nodes||[]).forEach(n=>{
+    const w = 190, h = 46;
+    const isCP = n.roles.some(r=>/control|master/.test(r));
+    rect(nx, y-14, w, h, {fill:isCP?"#e9d5ff":"#dcfce7", stroke:isCP?"#6d28d9":"#15803d", strokeWidth:2});
+    text(nx+12, y+2, trunc(n.name,16), {size:16, weight:700});
+    text(nx+12, y+20, `${n.roles.join(",")} · ${n.status}`, {size:13, fill:"#4b5563"});
+    nx += w + 14;
+    if(nx > CW-180){ nx = PAD+120; y += 60; }
+  });
+  y += 70;
+
+  const zoneTop = y;
+  x = PAD; rowH = 0;
+
+  namespaces.forEach((ns, idx)=>{
+    const [fill, stroke] = PALETTE[idx % PALETTE.length];
+    const services = ns.services;
+    const pods = ns.pods;
+
+    const podRows = Math.max(1, Math.ceil(pods.length / podCols));
+    const podGridW = pods.length ? (podCols*podW + (podCols-1)*podGap) : 0;
+    const podGridH = pods.length ? (podRows*podH + (podRows-1)*podGap) : 0;
+    const svcColW = services.length ? svcW : 0;
+    const svcColH = services.length ? (services.length*(svcH+svcGap)-svcGap) : 0;
+    const midGap = (svcColW && podGridW) ? 40 : 0;
+
+    const innerW = Math.max(svcColW + midGap + podGridW, 220);
+    const innerH = Math.max(podGridH, svcColH, 40);
+    const headH = 52;
+    const zoneW = innerW + 2*PAD;
+    const zoneH = headH + innerH + 2*PAD;
+
+    // wrap
+    if(x + zoneW > CW && x > PAD){ x = PAD; y += rowH + GAP; rowH = 0; }
+    const zx = x, zy = y;
+
+    // zone box — dashed if it has network policies ("protected")
+    const protectedNs = ns.networkPolicies.length > 0;
+    rect(zx, zy, zoneW, zoneH, {fill, stroke, strokeWidth:2.5, dash: protectedNs ? [8,6] : null});
+
+    // header
+    text(zx+PAD, zy+30, trunc(ns.name, 22), {size:22, weight:700, fill:stroke});
+    let badge = `${ns.counts.pods}p · ${ns.counts.services}s`;
+    text(zx+zoneW-PAD, zy+22, badge, {size:14, anchor:"end", fill:"#374151"});
+    if(protectedNs){
+      text(zx+zoneW-PAD, zy+40, `🔒 ${ns.counts.networkPolicies} netpol`, {size:14, anchor:"end", fill:"#7c2d12"});
+    }
+
+    // positions
+    const contentTop = zy + headH + PAD;
+    const svcX = zx + PAD;
+    const podX = zx + PAD + svcColW + midGap;
+
+    // draw connections first (so chips sit on top)
+    if(services.length && pods.length){
+      services.forEach((s, si)=>{
+        const sy = contentTop + si*(svcH+svcGap) + svcH/2;
+        pods.forEach((p, pi)=>{
+          if(selectorMatches(s.selector, p.labels)){
+            const col = pi % podCols, row = Math.floor(pi/podCols);
+            const px = podX + col*(podW+podGap);
+            const py = contentTop + row*(podH+podGap) + podH/2;
+            line(svcX+svcW, sy, px, py, {stroke, strokeWidth:1.5});
+          }
+        });
+      });
+    }
+
+    // services
+    services.forEach((s, si)=>{
+      const sy = contentTop + si*(svcH+svcGap);
+      rect(svcX, sy, svcW, svcH, {fill:SVC_FILL, stroke:SVC_STROKE, strokeWidth:2});
+      text(svcX+8, sy+16, `⬡ ${trunc(s.name,14)}`, {size:14, weight:700, fill:"#075985"});
+      text(svcX+8, sy+28, `${s.type} ${s.ports.join(",")}`.trim(), {size:11, fill:"#0369a1"});
+    });
+
+    // pods
+    pods.forEach((p, pi)=>{
+      const col = pi % podCols, row = Math.floor(pi/podCols);
+      const px = podX + col*(podW+podGap);
+      const py = contentTop + row*(podH+podGap);
+      const phaseColor = p.phase==="Running" ? "#166534" : (p.phase==="Pending"?"#92400e":"#991b1b");
+      rect(px, py, podW, podH, {fill:"#ffffff", stroke, strokeWidth:2});
+      text(px+8, py+15, trunc(p.name,15), {size:13, weight:700});
+      text(px+8, py+28, `● ${p.phase}`, {size:11, fill:phaseColor});
+    });
+
+    if(!pods.length && !services.length){
+      text(zx+PAD, contentTop+22, "(empty namespace)", {size:15, fill:"#6b7280"});
+    }
+
+    x += zoneW + GAP;
+    rowH = Math.max(rowH, zoneH);
+  });
+
+  const totalH = y + rowH + PAD + 10;
+  svg.setAttribute("viewBox", `0 0 ${CW} ${Math.max(totalH, zoneTop+120)}`);
+  svg.style.display = "block";
+  msg.style.display = "none";
+}
+
+// ---------- data + UI ----------
+async function scan(){
+  const btn=document.getElementById("scanBtn");
+  btn.disabled=true; btn.textContent="Scanning…";
+  msg.style.display="block"; msg.textContent="Reading the cluster…"; svg.style.display="none";
+  try{
+    const [scanRes, healthRes] = await Promise.all([
+      fetch("/api/scan").then(r=>r.json()),
+      fetch("/api/health").then(r=>r.json()).catch(()=>({components:[]})),
+    ]);
+    if(scanRes.detail){ throw new Error(scanRes.detail); }
+    renderStats(scanRes, healthRes);
+    draw(scanRes);
+    document.getElementById("served").textContent = "served by pod " + (scanRes.servedBy||"?");
+    renderLegend();
+    const warnKeys = Object.keys(scanRes.warnings||{});
+    if(warnKeys.length){
+      msg.style.display="block";
+      msg.innerHTML = "⚠ Limited RBAC — couldn't read: <b>"+warnKeys.join(", ")+"</b>. Diagram shows what was allowed.";
+      msg.style.color="#b45309";
+      setTimeout(()=>{ if(svg.style.display==="block") msg.style.display="none"; }, 60);
+      svg.style.display="block";
+    }
+  }catch(e){
+    svg.style.display="none"; msg.style.display="block"; msg.style.color="#b91c1c";
+    msg.textContent = "Scan failed: " + e.message;
+  }finally{
+    btn.disabled=false; btn.textContent="↻ Scan cluster";
+  }
+}
+
+function renderStats(d,h){
+  const t=d.totals;
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><b>${t.nodes}</b> nodes</div>
+    <div class="stat"><b>${t.namespaces}</b> namespaces</div>
+    <div class="stat"><b>${t.pods}</b> pods</div>
+    <div class="stat"><b>${t.services}</b> services</div>
+    <div class="stat"><b>${t.networkPolicies}</b> network policies</div>`;
+  const comps=(h&&h.components)||[];
+  const chips = comps.length ? comps.map(c=>{
+    const cls = c.health==="Healthy"?"ok":(c.health==="Unhealthy"?"bad":"unk");
+    const icon = c.name.includes("etcd") ? "🗄️" : "⚙️";
+    return `<span class="pill ${cls}">${icon} ${c.name}: ${c.health}</span>`;
+  }).join("") : `<span class="pill unk">control-plane health not exposed (managed cluster)</span>`;
+  document.getElementById("health").innerHTML = `<span style="font-size:16px;">etcd / control plane:</span> ${chips}`;
+}
+
+function renderLegend(){
+  document.getElementById("legend").innerHTML = `
+    <span><span class="sw" style="background:#fff;"></span> pod</span>
+    <span><span class="sw" style="background:#e0f2fe;border-color:#0369a1;"></span> service ⬡</span>
+    <span><span class="sw" style="background:#e9d5ff;border-color:#6d28d9;"></span> control-plane node</span>
+    <span>🔒 dashed border = namespace has NetworkPolicies</span>
+    <span>— line = service selects pod</span>`;
+}
+
+async function explain(){
+  if(!lastData){ return; }
+  const btn=document.getElementById("explainBtn"); btn.disabled=true; btn.textContent="Thinking…";
+  const box=document.getElementById("explain");
+  const summary = JSON.stringify({
+    nodes:lastData.nodes,
+    namespaces:lastData.namespaces.map(n=>({name:n.name, deployments:n.deployments, services:n.services.map(s=>({name:s.name,type:s.type,selector:s.selector})), networkPolicies:n.networkPolicies}))
+  });
+  try{
+    const r=await fetch("/api/explain",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({summary})});
+    const d=await r.json();
+    box.style.display="block";
+    box.textContent = r.ok ? d.explanation : ("⚠ "+(d.detail||"Explain unavailable."));
+  }catch(e){ box.style.display="block"; box.textContent="⚠ "+e.message; }
+  finally{ btn.disabled=false; btn.textContent="🧠 Explain (AI)"; }
+}
+
+function downloadPNG(){
+  if(svg.style.display==="none"){ return; }
+  const vb = svg.getAttribute("viewBox").split(" ").map(Number);
+  const w=vb[2], h=vb[3], scale=2;
+  const xml = new XMLSerializer().serializeToString(svg);
+  const img = new Image();
+  const blob = new Blob([xml],{type:"image/svg+xml;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  img.onload = ()=>{
+    const c=document.createElement("canvas"); c.width=w*scale; c.height=h*scale;
+    const ctx=c.getContext("2d"); ctx.fillStyle="#fbfaf5"; ctx.fillRect(0,0,c.width,c.height);
+    ctx.scale(scale,scale); ctx.drawImage(img,0,0);
+    URL.revokeObjectURL(url);
+    c.toBlob(b=>{ const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download="cluster-map.png"; a.click(); });
+  };
+  img.onerror = ()=>{ alert("PNG export needs the diagram rendered first."); URL.revokeObjectURL(url); };
+  img.src = url;
+}
+
+document.getElementById("scanBtn").addEventListener("click", scan);
+document.getElementById("showSystem").addEventListener("change", ()=>{ if(lastData) draw(lastData); });
+document.getElementById("explainBtn").addEventListener("click", explain);
+document.getElementById("pngBtn").addEventListener("click", downloadPNG);
+
+// Auto-scan on load.
+scan();
+</script>
+</body>
+</html>

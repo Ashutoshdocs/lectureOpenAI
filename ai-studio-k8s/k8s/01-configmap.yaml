@@ -1,0 +1,8 @@
+# Non-secret configuration. Safe to commit.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-studio-config
+  namespace: ai-studio
+data:
+  OPENAI_MODEL: "gpt-4o-mini"

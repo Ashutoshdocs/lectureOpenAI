@@ -1,0 +1,103 @@
+# Demo topology to visualize: a 3-tier "shop" spread across three namespaces.
+# Uses nginx:alpine everywhere so pods actually schedule on a small cluster.
+# Apply, then open the Cartographer and click Scan.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop-frontend
+  labels: { tier: frontend }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop-backend
+  labels: { tier: backend }
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop-database
+  labels: { tier: database }
+# ---------------- frontend ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop-frontend
+spec:
+  replicas: 3
+  selector: { matchLabels: { app: web } }
+  template:
+    metadata: { labels: { app: web, tier: frontend } }
+    spec:
+      containers:
+        - name: web
+          image: nginx:alpine
+          ports: [{ containerPort: 80 }]
+          resources: { requests: { cpu: "20m", memory: "32Mi" }, limits: { cpu: "100m", memory: "64Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: shop-frontend
+spec:
+  type: NodePort
+  selector: { app: web }
+  ports: [{ port: 80, targetPort: 80, nodePort: 30081 }]
+# ---------------- backend ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: shop-backend
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: api } }
+  template:
+    metadata: { labels: { app: api, tier: backend } }
+    spec:
+      containers:
+        - name: api
+          image: nginx:alpine
+          ports: [{ containerPort: 80 }]
+          resources: { requests: { cpu: "20m", memory: "32Mi" }, limits: { cpu: "100m", memory: "64Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: shop-backend
+spec:
+  selector: { app: api }
+  ports: [{ port: 8080, targetPort: 80 }]
+# ---------------- database ----------------
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: shop-database
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: db } }
+  template:
+    metadata: { labels: { app: db, tier: database } }
+    spec:
+      containers:
+        - name: db
+          image: nginx:alpine     # stand-in for a database
+          ports: [{ containerPort: 80 }]
+          resources: { requests: { cpu: "20m", memory: "32Mi" }, limits: { cpu: "100m", memory: "64Mi" } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: shop-database
+spec:
+  selector: { app: db }
+  ports: [{ port: 5432, targetPort: 80 }]

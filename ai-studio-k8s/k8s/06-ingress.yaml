@@ -1,0 +1,23 @@
+# OPTIONAL: nicer URL via an Ingress controller (e.g. ingress-nginx).
+# Only works if you have an ingress controller installed. If not, use the
+# NodePort service instead (http://<node-ip>:30080).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ai-studio
+  namespace: ai-studio
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ai-studio.local        # add "<node-ip> ai-studio.local" to your hosts file
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ai-studio
+                port:
+                  number: 80

@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-studio
+  namespace: ai-studio
+  labels:
+    app: ai-studio
+spec:
+  replicas: 2                      # start with 2 pods so load-balancing is visible
+  selector:
+    matchLabels:
+      app: ai-studio
+  template:
+    metadata:
+      labels:
+        app: ai-studio
+    spec:
+      containers:
+        - name: ai-studio
+          # Change this to YOUR image. Examples:
+          #   docker.io/<your-user>/ai-studio:1.0
+          #   ghcr.io/<your-user>/ai-studio:1.0
+          # For a local single-node cluster you built the image on, keep
+          # imagePullPolicy: IfNotPresent so it uses the local image.
+          image: ai-studio:1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            # Pod name via the downward API -> shown in the UI badge.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Model from the ConfigMap.
+            - name: OPENAI_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: ai-studio-config
+                  key: OPENAI_MODEL
+            # API key from the Secret.
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ai-studio-secret
+                  key: OPENAI_API_KEY
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10

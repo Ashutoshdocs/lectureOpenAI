@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Studio · OpenAI on Kubernetes</title>
+  <style>
+    :root {
+      --bg1: #0ea5e9;
+      --bg2: #6366f1;
+      --bg3: #a855f7;
+      --card: #ffffff;
+      --ink: #16182b;
+      --muted: #6b7280;
+      --line: #e9e9f2;
+      --accent: #6366f1;
+      --accent-2: #0ea5e9;
+      --soft: #f6f7ff;
+      --ok: #16a34a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(135deg, var(--bg1), var(--bg2) 55%, var(--bg3));
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 36px 18px;
+    }
+    .card {
+      width: 100%; max-width: 720px; background: var(--card);
+      border-radius: 22px; box-shadow: 0 30px 70px -20px rgba(20,16,50,0.5);
+      overflow: hidden;
+    }
+    header { padding: 26px 30px 20px; border-bottom: 1px solid var(--line); }
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 22px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+    .logo {
+      width: 30px; height: 30px; border-radius: 9px;
+      background: linear-gradient(135deg, var(--accent-2), var(--accent));
+      display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px;
+    }
+    header p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .pod {
+      font-size: 12px; font-weight: 600; color: #3730a3;
+      background: #eef2ff; border: 1px solid #e0e7ff;
+      padding: 6px 11px; border-radius: 999px;
+      display: inline-flex; align-items: center; gap: 7px;
+      font-variant-numeric: tabular-nums;
+    }
+    .pod .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(22,163,74,.18); }
+
+    .tabs { display: flex; gap: 6px; padding: 16px 30px 0; flex-wrap: wrap; }
+    .tab {
+      border: 1px solid var(--line); background: #fff; color: var(--muted);
+      padding: 9px 14px; border-radius: 11px; font-size: 13.5px; font-weight: 600;
+      cursor: pointer; transition: all .15s;
+    }
+    .tab:hover { border-color: #c7d2fe; }
+    .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .body { padding: 22px 30px 28px; }
+    .desc { color: var(--muted); font-size: 13.5px; margin: 0 0 14px; }
+
+    label { display:block; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing:.04em; margin-bottom: 7px; }
+    textarea, input, select {
+      width: 100%; font-family: inherit; font-size: 15px; color: var(--ink);
+      border: 1px solid var(--line); border-radius: 12px; padding: 13px 15px; outline: none;
+      transition: border-color .15s, box-shadow .15s; background: #fff;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    textarea:focus, input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,.15); }
+    .row { display: flex; gap: 12px; margin-top: 12px; }
+    .row > div { flex: 1; }
+
+    button.go {
+      margin-top: 14px; width: 100%; padding: 14px; font-size: 15px; font-weight: 700;
+      color: #fff; background: var(--accent); border: none; border-radius: 12px; cursor: pointer;
+      transition: background .15s, transform .05s;
+    }
+    button.go:hover { background: #4f46e5; }
+    button.go:active { transform: translateY(1px); }
+    button.go:disabled { opacity: .6; cursor: not-allowed; }
+
+    .out-head { display:flex; align-items:center; justify-content:space-between; margin-top: 24px; }
+    .timer { font-size: 12px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .timer.hidden { visibility: hidden; }
+    .out {
+      margin-top: 8px; min-height: 76px; padding: 18px 20px; background: var(--soft);
+      border: 1px solid var(--line); border-radius: 14px; font-size: 15px; line-height: 1.6;
+      white-space: pre-wrap; color: var(--ink);
+    }
+    .out.placeholder { color: var(--muted); }
+    .out.error { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+    .served { margin-top: 10px; font-size: 12px; color: var(--muted); }
+    .served b { color: #4338ca; }
+
+    /* sentiment chip */
+    .chip { display:inline-block; padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+    .chip.positive { background:#dcfce7; color:#166534; }
+    .chip.negative { background:#fee2e2; color:#991b1b; }
+    .chip.neutral  { background:#f1f5f9; color:#334155; }
+    .chip.unknown  { background:#f1f5f9; color:#334155; }
+
+    .dots span { display:inline-block; width:7px; height:7px; margin-right:4px; border-radius:50%; background:var(--accent); animation:blink 1.2s infinite both; }
+    .dots span:nth-child(2){animation-delay:.2s;} .dots span:nth-child(3){animation-delay:.4s;}
+    @keyframes blink {0%,80%,100%{opacity:.25;}40%{opacity:1;}}
+
+    footer { padding: 16px 30px 22px; color: var(--muted); font-size: 12px; text-align:center; border-top: 1px solid var(--line); }
+    code { background:#eef2ff; color:#3730a3; padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <header>
+      <div class="title-row">
+        <h1><span class="logo">AI</span> AI Studio</h1>
+        <span class="pod" id="podBadge"><span class="dot"></span> pod: …</span>
+      </div>
+      <p>Summarize, translate, analyze, rewrite, and explain — running on Kubernetes.</p>
+    </header>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tool="summarize">Summarize</button>
+      <button class="tab" data-tool="translate">Translate</button>
+      <button class="tab" data-tool="sentiment">Sentiment</button>
+      <button class="tab" data-tool="rewrite">Rewrite</button>
+      <button class="tab" data-tool="explain">Explain</button>
+    </div>
+
+    <div class="body">
+      <p class="desc" id="desc"></p>
+
+      <label for="text">Your text</label>
+      <textarea id="text" placeholder="Paste or type text here…"></textarea>
+
+      <!-- tool-specific option -->
+      <div class="row" id="optionRow" style="display:none;">
+        <div>
+          <label id="optLabel" for="option">Option</label>
+          <input id="option" />
+        </div>
+      </div>
+
+      <button class="go" id="go">Run</button>
+
+      <div class="out-head">
+        <label style="margin:0;">Result</label>
+        <span class="timer hidden" id="timer">0.0s</span>
+      </div>
+      <div class="out placeholder" id="out">The result will appear here.</div>
+      <div class="served" id="served"></div>
+    </div>
+
+    <footer>AI Studio · OpenAI + Docker + Kubernetes</footer>
+  </div>
+
+  <script>
+    const TOOLS = {
+      summarize: { desc: "Condense long text into a few clear bullet points.", endpoint: "/api/summarize", option: null },
+      translate: { desc: "Translate your text into another language.", endpoint: "/api/translate", option: { key: "target_language", label: "Target language", type: "input", default: "French" } },
+      sentiment: { desc: "Detect positive / neutral / negative tone, with a score and reason.", endpoint: "/api/sentiment", option: null },
+      rewrite:   { desc: "Rewrite your text in a different tone.", endpoint: "/api/rewrite", option: { key: "tone", label: "Tone", type: "select", choices: ["professional","friendly","formal","casual","persuasive","concise"], default: "professional" } },
+      explain:   { desc: "Explain a topic in simple terms.", endpoint: "/api/explain", option: { key: "level", label: "Explain for", type: "select", choices: ["a 5-year-old","a high-school student","a beginner","a busy executive"], default: "a 5-year-old" } },
+    };
+
+    let current = "summarize";
+    let timerId = null;
+
+    const tabsEl = document.getElementById("tabs");
+    const descEl = document.getElementById("desc");
+    const textEl = document.getElementById("text");
+    const optionRow = document.getElementById("optionRow");
+    const optLabel = document.getElementById("optLabel");
+    let optionEl = document.getElementById("option");
+    const goBtn = document.getElementById("go");
+    const outEl = document.getElementById("out");
+    const timerEl = document.getElementById("timer");
+    const servedEl = document.getElementById("served");
+    const podBadge = document.getElementById("podBadge");
+
+    // Show which pod is serving the page (updates the badge).
+    fetch("/api/info").then(r => r.json()).then(d => {
+      podBadge.innerHTML = '<span class="dot"></span> pod: ' + d.pod;
+    }).catch(() => { podBadge.innerHTML = '<span class="dot"></span> pod: (local)'; });
+
+    function selectTool(tool) {
+      current = tool;
+      [...tabsEl.children].forEach(b => b.classList.toggle("active", b.dataset.tool === tool));
+      const t = TOOLS[tool];
+      descEl.textContent = t.desc;
+      if (t.option) {
+        optionRow.style.display = "flex";
+        optLabel.textContent = t.option.label;
+        buildOption(t.option);
+      } else {
+        optionRow.style.display = "none";
+      }
+      goBtn.textContent = "Run " + tool.charAt(0).toUpperCase() + tool.slice(1);
+    }
+
+    function buildOption(opt) {
+      const parent = optionEl.parentElement;
+      const fresh = opt.type === "select" ? document.createElement("select") : document.createElement("input");
+      fresh.id = "option";
+      if (opt.type === "select") {
+        opt.choices.forEach(c => {
+          const o = document.createElement("option");
+          o.value = c; o.textContent = c;
+          if (c === opt.default) o.selected = true;
+          fresh.appendChild(o);
+        });
+      } else {
+        fresh.value = opt.default;
+      }
+      parent.replaceChild(fresh, optionEl);
+      optionEl = fresh;
+    }
+
+    tabsEl.addEventListener("click", e => {
+      if (e.target.dataset.tool) selectTool(e.target.dataset.tool);
+    });
+
+    async function run() {
+      const text = textEl.value.trim();
+      if (!text) { showError("Please enter some text first."); return; }
+
+      const t = TOOLS[current];
+      const bodyObj = { text };
+      if (t.option) bodyObj[t.option.key] = optionEl.value;
+
+      goBtn.disabled = true;
+      outEl.className = "out";
+      outEl.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
+      servedEl.textContent = "";
+      const start = performance.now();
+      startTimer(start);
+
+      try {
+        const res = await fetch(t.endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(bodyObj)
+        });
+        const data = await res.json();
+        const secs = ((performance.now() - start) / 1000).toFixed(1);
+        stopTimer(secs);
+
+        if (!res.ok) { showError(data.detail || "Something went wrong."); return; }
+        render(current, data);
+        if (data.pod) {
+          servedEl.innerHTML = "served by pod <b>" + data.pod + "</b> · model " + (data.model || "");
+          podBadge.innerHTML = '<span class="dot"></span> pod: ' + data.pod;
+        }
+      } catch (err) {
+        stopTimer(null);
+        showError("Could not reach the server. Is the app running?");
+      } finally {
+        goBtn.disabled = false;
+      }
+    }
+
+    function render(tool, data) {
+      outEl.className = "out";
+      if (tool === "sentiment") {
+        const s = (data.sentiment || "unknown").toLowerCase();
+        const score = (data.score !== undefined) ? data.score : "";
+        outEl.innerHTML =
+          '<span class="chip ' + s + '">' + s.toUpperCase() + '</span>' +
+          (score !== "" ? '  <span style="color:#6b7280;font-size:13px;">score: ' + score + '</span>' : '') +
+          '<div style="margin-top:12px;">' + escapeHtml(data.reason || "") + '</div>';
+      } else {
+        outEl.textContent = data.result || "(no output)";
+      }
+    }
+
+    function showError(msg) { outEl.className = "out error"; outEl.textContent = msg; }
+
+    function startTimer(start) {
+      timerEl.classList.remove("hidden"); timerEl.textContent = "0.0s";
+      timerId = setInterval(() => { timerEl.textContent = ((performance.now()-start)/1000).toFixed(1) + "s"; }, 100);
+    }
+    function stopTimer(secs) {
+      if (timerId) { clearInterval(timerId); timerId = null; }
+      if (secs) timerEl.textContent = "took " + secs + "s"; else timerEl.classList.add("hidden");
+    }
+    function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+    goBtn.addEventListener("click", run);
+    textEl.addEventListener("keydown", e => { if ((e.metaKey||e.ctrlKey) && e.key==="Enter") run(); });
+
+    selectTool("summarize");
+  </script>
+</body>
+</html>
