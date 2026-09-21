@@ -117,8 +117,8 @@ This sends the *structure* (not your data) to OpenAI for a plain-English write-u
 ```bash
 kubectl -n cartographer create secret generic cartographer-openai \
   --from-literal=OPENAI_API_KEY="sk-your-key"
-# then uncomment the OPENAI_API_KEY env block in k8s/02-deployment.yaml and re-apply
-kubectl apply -f k8s/02-deployment.yaml
+# then run kubectl delete -f 02-deployment.yaml and run the command:
+kubectl apply -f k8s/new-deployment.yaml
 ```
 
 ## Run locally without a cluster deploy
