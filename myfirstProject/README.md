@@ -61,7 +61,7 @@ Visit http://localhost:8000 — you should see the chat page.
 ## 3. Build the Docker image
 
 ```bash
-docker build -t openai-demo .
+docker build --no-cache -t openai-demo .
 ```
 
 ## 4. Run the container
