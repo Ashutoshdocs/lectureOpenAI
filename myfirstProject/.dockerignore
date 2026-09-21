@@ -1,0 +1,13 @@
+# Keep secrets and junk out of the image.
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.git/
+.gitignore
+.DS_Store
+README.md
