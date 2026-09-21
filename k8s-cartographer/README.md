@@ -71,7 +71,7 @@ Get it onto the cluster (same as any image):
 - **k3s:** `docker save k8s-cartographer:1.0 | sudo k3s ctr images import -`
 - **kind:** `kind load docker-image k8s-cartographer:1.0`
 - **minikube:** `minikube image load k8s-cartographer:1.0`
-- **fromnode:** `docker save k8s-cartographer:1.0 -o k8s-cartographer.tar && ctr -n k8s.io images import k8s-cartographer.tar` then `ctr -n k8s.io images export k8s-cartographer.tar k8s-cartographer:1.0`
+- **fromnode:** `docker save k8s-cartographer:1.0 -o k8s-cartographer.tar && ctr -n k8s.io images import k8s-cartographer.tar` then `ctr -n k8s.io images export k8s-cartographer.tar docker.io/library/k8s-cartographer:1.0`
 
 ## 2. Deploy the Cartographer (with its read-only RBAC)
 
