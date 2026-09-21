@@ -1,0 +1,34 @@
+# The intentionally-broken Deployment for the REAL-cluster demo.
+# LOG_LEVEL "verbose" is invalid -> the container exits(1) at startup
+# -> Kubernetes restarts it repeatedly -> CrashLoopBackOff.
+#
+# The agent's job is to discover this from the logs and run the equivalent of:
+#   kubectl set env deployment/web-api LOG_LEVEL=INFO
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-api
+  namespace: default
+  labels:
+    app: web-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-api
+  template:
+    metadata:
+      labels:
+        app: web-api
+    spec:
+      containers:
+        - name: web-api
+          image: web-api:1.4.2      # build locally: see manifests/README note
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: LOG_LEVEL
+              value: "verbose"       # <-- the bug
